@@ -1,62 +1,140 @@
-use bight::{
-    editor::EditorState,
-    evaluator::{EvaluatorTable, SourceTable},
-};
+use std::sync::{Arc, Mutex};
+
+use bight::{clipboard::Clipboard, evaluator::EvaluatorTable, table::cell::CellPos};
 use nvim_oxi::{
     self as nvim, Dictionary,
-    api::{opts::CreateAutocmdOpts, types::AutocmdCallbackArgs},
+    api::{
+        Buffer,
+        opts::{CreateAutocmdOpts, OptionOpts},
+        types::{AutocmdCallbackArgs, LogLevel},
+    },
 };
 
-use crate::editor::{EDITORS, add_keymaps, render_buffer};
+use crate::editor::{Editor, EditorState, add_keymaps, render_buffer};
+
+pub fn buf_create(args: AutocmdCallbackArgs) -> Option<Arc<Mutex<EditorState>>> {
+    let file = args.file;
+    let res = bight::file::load(&file);
+    let Ok(source) = res else {
+        nvim::api::notify(
+            &format!("Faile to load file {file:?}: {}", res.unwrap_err()),
+            LogLevel::Error,
+            &Dictionary::new(),
+        )
+        .unwrap();
+        return None;
+    };
+    let table = EvaluatorTable::new(source);
+    let editor = Arc::new(Mutex::new(EditorState {
+        table,
+        buffer: args.buffer,
+        clipboard: Clipboard::default(),
+    }));
+
+    render_buffer(editor.clone());
+
+    Some(editor)
+}
+
 pub fn attach_editor_autocmd() {
     nvim::api::create_autocmd(
         ["BufReadPost"],
         &CreateAutocmdOpts::builder()
             .patterns(["*.bight"])
-            .callback(|args: AutocmdCallbackArgs| {
-                let file = args.file;
-                let Ok(source) = bight::file::load(&file) else {
-                    bight::file::load(&file).unwrap();
+            .callback(|mut args: AutocmdCallbackArgs| {
+                let buffer = args.buffer.clone();
+                eprintln!("attach_editor_autocmd");
+                let Some(editor) = buf_create(args.clone()) else {
+                    eprintln!("ohno");
                     return false;
                 };
-                let table = EvaluatorTable::new(source);
-                let editor = EditorState {
-                    table,
-                    ..Default::default()
-                };
-
-                let mut buffer = args.buffer;
-
-                add_keymaps(&mut buffer);
-
-                EDITORS.lock().unwrap().insert(buffer.handle(), editor);
-
-                render_buffer(&mut buffer);
+                attach_buffer_autocmd(buffer, editor.clone());
+                add_keymaps(&mut args.buffer, editor);
                 true
             })
             .build(),
     )
     .unwrap();
+}
+
+fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
     nvim::api::create_autocmd(
         ["BufWritePost"],
         &CreateAutocmdOpts::builder()
-            .patterns(["*.bight"])
-            .callback(|args: AutocmdCallbackArgs| {
+            .callback(move |args: AutocmdCallbackArgs| {
                 let file = args.file;
-                let buffer = args.buffer.handle();
-                let editor = EDITORS.lock().unwrap();
-                let source = if let Some(state) = editor.get(&buffer) {
-                    state.table.source_table().clone()
-                } else {
-                    SourceTable::new()
-                };
-                nvim::api::notify(
-                    "Saved",
-                    nvim_oxi::api::types::LogLevel::Warn,
-                    &Dictionary::new(),
+                let source = editor.lock().unwrap().table.source_table().clone();
+                bight::file::save(&file, source).is_ok()
+            })
+            .buffer(buffer.clone())
+            .build(),
+    )
+    .unwrap();
+}
+
+pub fn start_editing_cell(pos: CellPos, editor: Editor) {
+    let source = editor
+        .lock()
+        .unwrap()
+        .table
+        .get_source(pos)
+        .map(|s| s.lines().map(String::from).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let mut buffer = nvim::api::create_buf(true, false).unwrap();
+    buffer.set_lines(.., false, source).unwrap();
+    buffer
+        .set_name(format!(
+            "{pos}-{}",
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_millis()
+        ))
+        .unwrap();
+    nvim::api::set_option_value(
+        "buftype",
+        "acwrite",
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
+    nvim::api::set_option_value(
+        "filetype",
+        "bcell",
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
+
+    nvim::api::create_autocmd(
+        ["BufWriteCmd"],
+        &CreateAutocmdOpts::builder()
+            .buffer(buffer.clone())
+            .callback(move |_args: AutocmdCallbackArgs| {
+                eprintln!("BufWriteCmd");
+                let content = buffer
+                    .get_lines(.., false)
+                    .unwrap()
+                    .fold(String::new(), |v, a| format!("{v}{a}\n"));
+                eprintln!("saved {pos}, content: {content}");
+                nvim::api::set_option_value(
+                    "modified",
+                    false,
+                    &OptionOpts::builder().buffer(buffer.clone()).build(),
                 )
                 .unwrap();
-                bight::file::save(&file, source).is_ok()
+                editor
+                    .lock()
+                    .unwrap()
+                    .table
+                    .set_source(pos, Some(Arc::from(content)));
+                let editor_buf = editor.lock().unwrap().buffer.clone();
+                render_buffer(editor.clone());
+                nvim::api::set_option_value(
+                    "modified",
+                    true,
+                    &OptionOpts::builder().buffer(editor_buf.clone()).build(),
+                )
+                .unwrap();
+                false
             })
             .build(),
     )

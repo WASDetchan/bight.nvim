@@ -5,32 +5,32 @@ mod util;
 pub use autocmd::attach_editor_autocmd;
 pub use key::add_keymaps;
 
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 
-use bight::{editor::EditorState, table::Table};
-use hashbrown::HashMap;
+use bight::{clipboard::Clipboard, evaluator::EvaluatorTable, table::Table};
 use nvim_oxi::{
     self as nvim,
     api::{Buffer, opts::OptionOpts},
 };
 
-static EDITORS: LazyLock<Mutex<HashMap<i32, EditorState>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub struct EditorState {
+    buffer: Buffer,
+    table: EvaluatorTable,
+    clipboard: Clipboard,
+}
 
 const CELL_WIDTH: usize = 8;
 const CELL_SEPARATOR: &str = " ";
 const CELL_UNIT_WIDTH: usize = CELL_WIDTH + CELL_SEPARATOR.len();
 
-fn render_buffer(buffer: &mut Buffer) {
-    let mut editors_guard = EDITORS.lock().unwrap();
-    let Some(editor) = editors_guard.get_mut(&buffer.handle()) else {
-        return;
-    };
+type Editor = Arc<Mutex<EditorState>>;
 
-    editor.table.evaluate();
-
+fn render_buffer(editor: Editor) {
     let display_width = nvim::api::get_current_win().get_width().unwrap() as usize;
     let height = nvim::api::get_current_win().get_height().unwrap() as usize;
+
+    let mut editor = editor.lock().unwrap();
+    editor.table.evaluate();
 
     let table = &editor.table;
 
@@ -54,8 +54,14 @@ fn render_buffer(buffer: &mut Buffer) {
                 ),
             );
         }
-        lines.push(line.take(display_width).collect::<String>());
+        let s = line.take(display_width).collect::<String>();
+        assert!(!s.contains('\n'));
+
+        lines.push(s);
     }
+
+    let mut buffer = editor.buffer.clone();
+    drop(editor);
 
     buffer.set_lines(0..height, false, lines).unwrap();
     nvim::api::set_option_value(

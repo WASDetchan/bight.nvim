@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "bight_nvim"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bight",
  "hashbrown 0.15.5",
