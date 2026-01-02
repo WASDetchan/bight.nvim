@@ -1,6 +1,6 @@
 [package]
 name = "bight_nvim"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [lib]
@@ -8,5 +8,6 @@ name = "bight"
 crate-type = ["cdylib"]
 
 [dependencies]
-nvim-oxi = {version = "0.6", features = ["neovim-0-11", "test"]}
+nvim-oxi = {version = "0.6", features = ["neovim-0-11", "test", "mlua"]}
 bight = { path = "../bight/bight/" , version = "0.1.1" }
+hashbrown = "0.15"

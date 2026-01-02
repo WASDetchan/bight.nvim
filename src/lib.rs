@@ -1,30 +1,48 @@
-use std::sync::{LazyLock, Mutex};
+mod editor;
 
-use nvim_oxi::{Dictionary, Function, Object};
+use nvim_oxi::{
+    self as nvim, Dictionary, Function, Object, ObjectKind,
+    lua::{Poppable, Pushable},
+};
 
-static COUNT: LazyLock<Mutex<u64>> = LazyLock::new(|| Mutex::new(0u64));
+use crate::editor::attach_editor_autocmd;
 
-fn setup(_: ()) -> u64 {
-    *COUNT.lock().unwrap() += 1;
-    return *COUNT.lock().unwrap();
+fn create_filetype() {
+    let lua = nvim::mlua::lua();
+    let chunk = lua.load(
+        r#"vim.filetype.add({
+          extension = {
+            bight = "bight",
+          },
+        })"#,
+    );
+    chunk.exec().unwrap();
 }
 
-#[nvim_oxi::plugin]
+fn to_bool(x: &Object) -> bool {
+    match x.kind() {
+        ObjectKind::Nil => false,
+        ObjectKind::Boolean => unsafe { x.as_boolean_unchecked() },
+        _ => true,
+    }
+}
+
+fn setup((opts,): (Option<Dictionary>,)) {
+    let opts = opts.unwrap_or(Dictionary::new());
+    create_filetype();
+    if to_bool(opts.get("default_keys").unwrap_or(&Object::nil())) {
+        todo!();
+    }
+    attach_editor_autocmd();
+}
+
+fn fn_object<T: Poppable, R: Pushable, F: Fn((T,)) -> R + 'static>(f: F) -> Object {
+    Object::from(Function::from_fn(f))
+}
+
+#[nvim::plugin]
 fn bight() -> Dictionary {
-    let add = Function::from_fn(|(a, b): (i32, i32)| a + b);
-
-    let multiply = Function::from_fn(|(a, b): (i32, i32)| a * b);
-
-    let compute = Function::from_fn(|(fun, a, b): (Function<(i32, i32), i32>, i32, i32)| {
-        fun.call((a, b)).unwrap()
-    });
-
-    Dictionary::from_iter([
-        ("add", Object::from(add)),
-        ("multiply", Object::from(multiply)),
-        ("compute", Object::from(compute)),
-        ("setup", Object::from(Function::from_fn(setup))),
-    ])
+    Dictionary::from_iter([("setup", fn_object(setup))])
 }
 
 pub fn add(left: u64, right: u64) -> u64 {
