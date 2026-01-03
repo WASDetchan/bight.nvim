@@ -1,6 +1,6 @@
 [package]
 name = "bight_nvim"
-version = "0.1.3-a"
+version = "0.1.3-b"
 edition = "2024"
 
 [lib]
