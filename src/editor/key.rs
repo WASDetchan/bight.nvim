@@ -5,7 +5,13 @@ use crate::editor::{
 };
 
 use super::CELL_UNIT_WIDTH;
-use bight::table::{Table, slice::SlicePos};
+use bight::{
+    csv::slice_to_csv_string,
+    table::{
+        Table,
+        slice::{SlicePos, table::TableSlice},
+    },
+};
 use nvim_oxi::api::{Buffer, opts::SetKeymapOpts, types::Mode};
 
 pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
@@ -89,6 +95,29 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                             .map(|v| v.to_string())
                             .unwrap_or(String::from(""))
                             .clone();
+
+                        editor.clipboard.set(Arc::from(source))
+                    })
+                    .build(),
+            )
+            .unwrap();
+    }
+    {
+        let editor = editor.clone();
+        buffer
+            .set_keymap(
+                Mode::VisualSelect,
+                "Y",
+                "",
+                &SetKeymapOpts::builder()
+                    .callback(move |()| {
+                        let start = editor.lock().unwrap().visual_start;
+                        let mut end = current_cell_pos();
+                        end.x += 1;
+                        end.y += 1;
+                        let spos = SlicePos::new(start, end);
+                        let mut editor = editor.lock().unwrap();
+                        let source = slice_to_csv_string(TableSlice::new(spos, &editor.table));
 
                         editor.clipboard.set(Arc::from(source))
                     })
