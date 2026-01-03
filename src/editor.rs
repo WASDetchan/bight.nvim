@@ -5,19 +5,19 @@ mod util;
 pub use autocmd::attach_editor_autocmd;
 pub use key::add_keymaps;
 
-use std::sync::{Arc, Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use bight::{
     clipboard::Clipboard,
-    evaluator::EvaluatorTable,
+    evaluator::{EvaluatorTable, SourceTable},
     table::{Table, cell::CellPos},
 };
 use nvim_oxi::{
     self as nvim,
-    api::{
-        Buffer,
-        opts::{OptionOpts, SetExtmarkOpts},
-    },
+    api::{Buffer, opts::SetExtmarkOpts},
 };
 
 pub struct EditorState {
@@ -26,6 +26,28 @@ pub struct EditorState {
     buffer: Buffer,
     table: EvaluatorTable,
     clipboard: Clipboard,
+}
+
+impl EditorState {
+    pub fn with_new_buffer(buffer: Buffer) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self {
+            buffer,
+            replace_mode: None,
+            visual_start: CellPos::default(),
+            table: EvaluatorTable::new(SourceTable::new()),
+            clipboard: Clipboard::new(),
+        }))
+    }
+    pub fn with_file_buffer(buffer: Buffer, file: &Path) -> anyhow::Result<Arc<Mutex<Self>>> {
+        let source = bight::file::load(file)?;
+        Ok(Arc::new(Mutex::new(Self {
+            buffer,
+            replace_mode: None,
+            visual_start: CellPos::default(),
+            table: EvaluatorTable::new(source),
+            clipboard: Clipboard::new(),
+        })))
+    }
 }
 
 const CELL_WIDTH: usize = 8;
@@ -154,13 +176,6 @@ pub fn render_buffer_replace(editor: Editor, pos: CellPos, replace_input: bool) 
                 .build(),
         )
         .unwrap();
-
-    nvim::api::set_option_value(
-        "modified",
-        true,
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
-    )
-    .unwrap();
 }
 
 fn render_buffer(editor: Editor) {
@@ -207,10 +222,4 @@ fn render_buffer(editor: Editor) {
     drop(editor);
 
     buffer.set_lines(0..height, false, lines).unwrap();
-    nvim::api::set_option_value(
-        "modified",
-        false,
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
-    )
-    .unwrap();
 }

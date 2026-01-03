@@ -1,68 +1,63 @@
-use std::sync::{Arc, Mutex};
-
-use bight::{
-    clipboard::Clipboard,
-    evaluator::{EvaluatorTable, SourceTable},
-    table::cell::CellPos,
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
 };
+
+use bight::table::cell::CellPos;
 use nvim_oxi::{
-    self as nvim, Dictionary,
+    self as nvim,
     api::{
         Buffer,
         opts::{CreateAutocmdOpts, OptionOpts},
-        types::{AutocmdCallbackArgs, LogLevel},
+        types::AutocmdCallbackArgs,
     },
 };
 
 use crate::editor::{
     CELL_UNIT_WIDTH, Editor, EditorState, add_keymaps, exit_insert, render_buffer,
-    render_buffer_replace, util::current_cell_pos,
+    render_buffer_replace,
+    util::{current_cell_pos, notify_err},
 };
 
-pub fn buf_create(args: AutocmdCallbackArgs) -> Option<Arc<Mutex<EditorState>>> {
-    let file = args.file;
-    let res = bight::file::load(&file);
-    let source = match res {
-        Ok(s) => s,
-        Err(e) => {
-            nvim::api::notify(
-                &format!("Faile to load file {file:?}: {e}"),
-                LogLevel::Error,
-                &Dictionary::new(),
-            )
-            .unwrap();
-            SourceTable::new()
+pub fn init_buffer(mut buffer: Buffer, file: Option<&Path>) {
+    let editor = if let Some(file) = file {
+        match EditorState::with_file_buffer(buffer.clone(), file) {
+            Ok(v) => v,
+
+            Err(e) => {
+                notify_err(&format!("Failed to load file {:?}: {e}", file));
+                EditorState::with_new_buffer(buffer.clone())
+            }
         }
+    } else {
+        EditorState::with_new_buffer(buffer.clone())
     };
-    let table = EvaluatorTable::new(source);
-    let editor = Arc::new(Mutex::new(EditorState {
-        table,
-        buffer: args.buffer,
-        replace_mode: None,
-        visual_start: CellPos::default(),
-        clipboard: Clipboard::default(),
-    }));
 
     render_buffer(editor.clone());
 
-    Some(editor)
+    add_keymaps(&mut buffer, editor.clone());
+    attach_buffer_autocmd(buffer, editor);
 }
 
 pub fn attach_editor_autocmd() {
     nvim::api::create_autocmd(
-        ["BufReadPost", "BufNewFile"],
+        ["BufReadPost"],
         &CreateAutocmdOpts::builder()
             .patterns(["*.bight"])
-            .callback(|mut args: AutocmdCallbackArgs| {
-                let buffer = args.buffer.clone();
-                eprintln!("attach_editor_autocmd");
-                let Some(editor) = buf_create(args.clone()) else {
-                    eprintln!("ohno");
-                    return false;
-                };
-                attach_buffer_autocmd(buffer, editor.clone());
-                add_keymaps(&mut args.buffer, editor);
-                true
+            .callback(|args: AutocmdCallbackArgs| {
+                init_buffer(args.buffer, Some(&args.file));
+                false
+            })
+            .build(),
+    )
+    .unwrap();
+    nvim::api::create_autocmd(
+        ["BufNewFile"],
+        &CreateAutocmdOpts::builder()
+            .patterns(["*.bight"])
+            .callback(|args: AutocmdCallbackArgs| {
+                init_buffer(args.buffer, None);
+                false
             })
             .build(),
     )
@@ -70,17 +65,49 @@ pub fn attach_editor_autocmd() {
 }
 
 fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
+    nvim::api::set_option_value(
+        "buftype",
+        "acwrite",
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
+    nvim::api::set_option_value(
+        "filetype",
+        "bight",
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
+
+    nvim::api::set_option_value(
+        "modified",
+        false,
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
     {
         let editor = editor.clone();
+        let buffer = buffer.clone();
+        let cbuffer = buffer.clone();
         nvim::api::create_autocmd(
-            ["BufWritePost"],
+            ["BufWriteCmd"],
             &CreateAutocmdOpts::builder()
                 .callback(move |args: AutocmdCallbackArgs| {
                     let file = args.file;
                     let source = editor.lock().unwrap().table.source_table().clone();
-                    bight::file::save(&file, source).is_ok()
+                    if let Err(e) = bight::file::save(&file, source) {
+                        notify_err(&format!("Failed to save file {file:?}: {e}"));
+                        return false;
+                    } else {
+                        nvim::api::set_option_value(
+                            "modified",
+                            false,
+                            &OptionOpts::builder().buffer(buffer.clone()).build(),
+                        )
+                        .unwrap();
+                    }
+                    false
                 })
-                .buffer(buffer.clone())
+                .buffer(cbuffer)
                 .build(),
         )
         .unwrap();

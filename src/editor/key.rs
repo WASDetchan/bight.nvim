@@ -5,7 +5,7 @@ use crate::editor::{
 };
 
 use super::CELL_UNIT_WIDTH;
-use bight::table::slice::SlicePos;
+use bight::table::{Table, slice::SlicePos};
 use nvim_oxi::api::{Buffer, opts::SetKeymapOpts, types::Mode};
 
 pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
@@ -67,6 +67,30 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                             .clone();
 
                         editor.clipboard.set(source)
+                    })
+                    .build(),
+            )
+            .unwrap();
+    }
+    {
+        let editor = editor.clone();
+        buffer
+            .set_keymap(
+                Mode::Normal,
+                "Y",
+                "",
+                &SetKeymapOpts::builder()
+                    .callback(move |()| {
+                        let pos = current_cell_pos();
+                        let mut editor = editor.lock().unwrap();
+                        let source = editor
+                            .table
+                            .get(pos)
+                            .map(|v| v.to_string())
+                            .unwrap_or(String::from(""))
+                            .clone();
+
+                        editor.clipboard.set(Arc::from(source))
                     })
                     .build(),
             )
