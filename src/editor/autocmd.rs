@@ -1,6 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use bight::{clipboard::Clipboard, evaluator::EvaluatorTable, table::cell::CellPos};
+use bight::{
+    clipboard::Clipboard,
+    evaluator::{EvaluatorTable, SourceTable},
+    table::cell::CellPos,
+};
 use nvim_oxi::{
     self as nvim, Dictionary,
     api::{
@@ -10,24 +14,32 @@ use nvim_oxi::{
     },
 };
 
-use crate::editor::{Editor, EditorState, add_keymaps, render_buffer};
+use crate::editor::{
+    CELL_UNIT_WIDTH, Editor, EditorState, add_keymaps, exit_insert, render_buffer,
+    render_buffer_replace, util::current_cell_pos,
+};
 
 pub fn buf_create(args: AutocmdCallbackArgs) -> Option<Arc<Mutex<EditorState>>> {
     let file = args.file;
     let res = bight::file::load(&file);
-    let Ok(source) = res else {
-        nvim::api::notify(
-            &format!("Faile to load file {file:?}: {}", res.unwrap_err()),
-            LogLevel::Error,
-            &Dictionary::new(),
-        )
-        .unwrap();
-        return None;
+    let source = match res {
+        Ok(s) => s,
+        Err(e) => {
+            nvim::api::notify(
+                &format!("Faile to load file {file:?}: {e}"),
+                LogLevel::Error,
+                &Dictionary::new(),
+            )
+            .unwrap();
+            SourceTable::new()
+        }
     };
     let table = EvaluatorTable::new(source);
     let editor = Arc::new(Mutex::new(EditorState {
         table,
         buffer: args.buffer,
+        replace_mode: None,
+        visual_start: CellPos::default(),
         clipboard: Clipboard::default(),
     }));
 
@@ -38,7 +50,7 @@ pub fn buf_create(args: AutocmdCallbackArgs) -> Option<Arc<Mutex<EditorState>>> 
 
 pub fn attach_editor_autocmd() {
     nvim::api::create_autocmd(
-        ["BufReadPost"],
+        ["BufReadPost", "BufNewFile"],
         &CreateAutocmdOpts::builder()
             .patterns(["*.bight"])
             .callback(|mut args: AutocmdCallbackArgs| {
@@ -58,13 +70,79 @@ pub fn attach_editor_autocmd() {
 }
 
 fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
+    {
+        let editor = editor.clone();
+        nvim::api::create_autocmd(
+            ["BufWritePost"],
+            &CreateAutocmdOpts::builder()
+                .callback(move |args: AutocmdCallbackArgs| {
+                    let file = args.file;
+                    let source = editor.lock().unwrap().table.source_table().clone();
+                    bight::file::save(&file, source).is_ok()
+                })
+                .buffer(buffer.clone())
+                .build(),
+        )
+        .unwrap();
+    }
+
+    {
+        let editor = editor.clone();
+        nvim::api::create_autocmd(
+            ["InsertEnter"],
+            &CreateAutocmdOpts::builder()
+                .callback(move |_args: AutocmdCallbackArgs| {
+                    let pos = current_cell_pos();
+                    editor.lock().unwrap().replace_mode = Some(pos);
+                    render_buffer_replace(editor.clone(), pos, true);
+                    false
+                })
+                .buffer(buffer.clone())
+                .build(),
+        )
+        .unwrap();
+    }
+
+    let cb_to_v = {
+        let editor = editor.clone();
+        move || {
+            editor.lock().unwrap().visual_start = current_cell_pos();
+        }
+    };
+    let cb_to_n = {
+        move || {
+            let cell_pos = current_cell_pos();
+            nvim::api::get_current_win()
+                .set_cursor(cell_pos.y + 1, cell_pos.x * CELL_UNIT_WIDTH)
+                .unwrap();
+        }
+    };
+
     nvim::api::create_autocmd(
-        ["BufWritePost"],
+        ["ModeChanged"],
         &CreateAutocmdOpts::builder()
-            .callback(move |args: AutocmdCallbackArgs| {
-                let file = args.file;
-                let source = editor.lock().unwrap().table.source_table().clone();
-                bight::file::save(&file, source).is_ok()
+            .buffer(buffer.clone())
+            .callback(move |_args: AutocmdCallbackArgs| {
+                let mode = nvim::api::get_mode().unwrap();
+                eprintln!("ModeChanged to {:?}", mode.mode);
+                match mode.mode.to_string().as_str() {
+                    "n" => cb_to_n(),
+                    "\u{16}" => cb_to_v(),
+                    _ => {}
+                };
+                false
+            })
+            .build(),
+    )
+    .unwrap();
+
+    nvim::api::create_autocmd(
+        ["InsertLeave"],
+        &CreateAutocmdOpts::builder()
+            .callback(move |_args: AutocmdCallbackArgs| {
+                exit_insert(&editor);
+                render_buffer(editor.clone());
+                false
             })
             .buffer(buffer.clone())
             .build(),
@@ -104,17 +182,22 @@ pub fn start_editing_cell(pos: CellPos, editor: Editor) {
     )
     .unwrap();
 
+    nvim::api::set_option_value(
+        "modified",
+        false,
+        &OptionOpts::builder().buffer(buffer.clone()).build(),
+    )
+    .unwrap();
+
     nvim::api::create_autocmd(
         ["BufWriteCmd"],
         &CreateAutocmdOpts::builder()
             .buffer(buffer.clone())
             .callback(move |_args: AutocmdCallbackArgs| {
-                eprintln!("BufWriteCmd");
                 let content = buffer
                     .get_lines(.., false)
                     .unwrap()
                     .fold(String::new(), |v, a| format!("{v}{a}\n"));
-                eprintln!("saved {pos}, content: {content}");
                 nvim::api::set_option_value(
                     "modified",
                     false,
