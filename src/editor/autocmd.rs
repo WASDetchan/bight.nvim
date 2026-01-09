@@ -1,9 +1,6 @@
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{path::Path, sync::Arc};
 
-use bight::table::cell::CellPos;
+use bight::{file::BightFile, table::cell::CellPos};
 use nvim_oxi::{
     self as nvim,
     api::{
@@ -13,27 +10,26 @@ use nvim_oxi::{
     },
 };
 
-use crate::editor::{
-    CELL_UNIT_WIDTH, Editor, EditorState, add_keymaps, exit_insert, render_buffer,
-    render_buffer_replace,
-    util::{current_cell_pos, notify_err},
+use crate::{
+    editor::{Editor, add_keymaps, render_buffer, render_buffer_edit},
+    util::{current_cell_pos, get_buffer_as_string, normalize_cursor, notify_err},
 };
 
 pub fn init_buffer(mut buffer: Buffer, file: Option<&Path>) {
     let editor = if let Some(file) = file {
-        match EditorState::with_file_buffer(buffer.clone(), file) {
+        match Editor::with_file_buffer(buffer.clone(), file) {
             Ok(v) => v,
 
             Err(e) => {
                 notify_err(&format!("Failed to load file {:?}: {e}", file));
-                EditorState::with_new_buffer(buffer.clone())
+                Editor::with_new_buffer(buffer.clone())
             }
         }
     } else {
-        EditorState::with_new_buffer(buffer.clone())
+        Editor::with_new_buffer(buffer.clone())
     };
 
-    render_buffer(editor.clone());
+    render_buffer(&editor);
 
     add_keymaps(&mut buffer, editor.clone());
     attach_buffer_autocmd(buffer, editor);
@@ -64,24 +60,24 @@ pub fn attach_editor_autocmd() {
     .unwrap();
 }
 
-fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
+fn attach_buffer_autocmd(buffer: Buffer, editor: Editor) {
     nvim::api::set_option_value(
         "buftype",
         "acwrite",
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
+        &OptionOpts::builder().buf(buffer.clone()).build(),
     )
     .unwrap();
     nvim::api::set_option_value(
         "filetype",
         "bight",
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
+        &OptionOpts::builder().buf(buffer.clone()).build(),
     )
     .unwrap();
 
     nvim::api::set_option_value(
         "modified",
         false,
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
+        &OptionOpts::builder().buf(buffer.clone()).build(),
     )
     .unwrap();
     {
@@ -94,14 +90,15 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
                 .callback(move |args: AutocmdCallbackArgs| {
                     let file = args.file;
                     let source = editor.lock().unwrap().table.source_table().clone();
-                    if let Err(e) = bight::file::save(&file, source) {
+                    let bfile = BightFile::new(source);
+                    if let Err(e) = bight::file::save(&file, &bfile) {
                         notify_err(&format!("Failed to save file {file:?}: {e}"));
                         return false;
                     } else {
                         nvim::api::set_option_value(
                             "modified",
                             false,
-                            &OptionOpts::builder().buffer(buffer.clone()).build(),
+                            &OptionOpts::builder().buf(buffer.clone()).build(),
                         )
                         .unwrap();
                     }
@@ -120,8 +117,8 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
             &CreateAutocmdOpts::builder()
                 .callback(move |_args: AutocmdCallbackArgs| {
                     let pos = current_cell_pos();
-                    editor.lock().unwrap().replace_mode = Some(pos);
-                    render_buffer_replace(editor.clone(), pos, true);
+                    editor.lock().unwrap().edit = Some(pos);
+                    render_buffer_edit(&editor, pos, true);
                     false
                 })
                 .buffer(buffer.clone())
@@ -136,24 +133,15 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
             editor.lock().unwrap().visual_start = current_cell_pos();
         }
     };
-    let cb_to_n = {
-        move || {
-            let cell_pos = current_cell_pos();
-            nvim::api::get_current_win()
-                .set_cursor(cell_pos.y + 1, cell_pos.x * CELL_UNIT_WIDTH)
-                .unwrap();
-        }
-    };
 
     nvim::api::create_autocmd(
         ["ModeChanged"],
         &CreateAutocmdOpts::builder()
             .buffer(buffer.clone())
             .callback(move |_args: AutocmdCallbackArgs| {
-                let mode = nvim::api::get_mode().unwrap();
-                eprintln!("ModeChanged to {:?}", mode.mode);
+                let mode = nvim::api::get_mode();
                 match mode.mode.to_string().as_str() {
-                    "n" => cb_to_n(),
+                    "n" => normalize_cursor(),
                     "\u{16}" => cb_to_v(),
                     _ => {}
                 };
@@ -167,8 +155,8 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
         ["InsertLeave"],
         &CreateAutocmdOpts::builder()
             .callback(move |_args: AutocmdCallbackArgs| {
-                exit_insert(&editor);
-                render_buffer(editor.clone());
+                editor.exit_edit();
+                render_buffer(&editor);
                 false
             })
             .buffer(buffer.clone())
@@ -177,71 +165,29 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Arc<Mutex<EditorState>>) {
     .unwrap();
 }
 
-pub fn start_editing_cell(pos: CellPos, editor: Editor) {
-    let source = editor
-        .lock()
-        .unwrap()
-        .table
-        .get_source(pos)
-        .map(|s| s.lines().map(String::from).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let mut buffer = nvim::api::create_buf(true, false).unwrap();
-    buffer.set_lines(.., false, source).unwrap();
-    buffer
-        .set_name(format!(
-            "{pos}-{}",
-            std::time::SystemTime::UNIX_EPOCH
-                .elapsed()
-                .unwrap()
-                .as_millis()
-        ))
-        .unwrap();
-    nvim::api::set_option_value(
-        "buftype",
-        "acwrite",
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
-    )
-    .unwrap();
-    nvim::api::set_option_value(
-        "filetype",
-        "bcell",
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
-    )
-    .unwrap();
-
-    nvim::api::set_option_value(
-        "modified",
-        false,
-        &OptionOpts::builder().buffer(buffer.clone()).build(),
-    )
-    .unwrap();
-
+pub fn attach_cell_edit_autocmd(pos: CellPos, buffer: Buffer, editor: Editor) {
     nvim::api::create_autocmd(
         ["BufWriteCmd"],
         &CreateAutocmdOpts::builder()
             .buffer(buffer.clone())
             .callback(move |_args: AutocmdCallbackArgs| {
-                let content = buffer
-                    .get_lines(.., false)
-                    .unwrap()
-                    .fold(String::new(), |v, a| format!("{v}{a}\n"));
+                let content = get_buffer_as_string(&buffer);
                 nvim::api::set_option_value(
                     "modified",
                     false,
-                    &OptionOpts::builder().buffer(buffer.clone()).build(),
+                    &OptionOpts::builder().buf(buffer.clone()).build(),
                 )
                 .unwrap();
                 editor
-                    .lock()
-                    .unwrap()
+                    .state()
                     .table
                     .set_source(pos, Some(Arc::from(content)));
                 let editor_buf = editor.lock().unwrap().buffer.clone();
-                render_buffer(editor.clone());
+                render_buffer(&editor);
                 nvim::api::set_option_value(
                     "modified",
                     true,
-                    &OptionOpts::builder().buffer(editor_buf.clone()).build(),
+                    &OptionOpts::builder().buf(editor_buf.clone()).build(),
                 )
                 .unwrap();
                 false

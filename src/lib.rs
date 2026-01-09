@@ -1,14 +1,15 @@
-mod editor;
+pub mod editor;
+pub mod util;
 
-use nvim_oxi::{
-    self as nvim, Dictionary, Function, Object, ObjectKind,
-    lua::{Poppable, Pushable},
+use nvim_oxi::{self as nvim, Dictionary};
+
+use crate::{
+    editor::{Editor, attach_editor_autocmd},
+    util::{fn_object, get_as_bool},
 };
 
-use crate::editor::attach_editor_autocmd;
-
 fn create_filetype() {
-    let lua = nvim::mlua::lua();
+    let lua = util::nvim_mlua();
     let chunk = lua.load(
         r#"vim.filetype.add({
           extension = {
@@ -19,30 +20,23 @@ fn create_filetype() {
     chunk.exec().unwrap();
 }
 
-fn to_bool(x: &Object) -> bool {
-    match x.kind() {
-        ObjectKind::Nil => false,
-        ObjectKind::Boolean => unsafe { x.as_boolean_unchecked() },
-        _ => true,
-    }
-}
-
-fn setup((opts,): (Option<Dictionary>,)) {
-    let opts = opts.unwrap_or(Dictionary::new());
+fn setup(opts: Option<Dictionary>) {
+    let opts = opts.unwrap_or_default();
     create_filetype();
-    if to_bool(opts.get("default_keys").unwrap_or(&Object::nil())) {
+    if get_as_bool(&opts, "default_keys") {
         todo!();
     }
     attach_editor_autocmd();
 }
 
-fn fn_object<T: Poppable, R: Pushable, F: Fn((T,)) -> R + 'static>(f: F) -> Object {
-    Object::from(Function::from_fn(f))
-}
-
 #[nvim::plugin]
 fn bight() -> Dictionary {
-    Dictionary::from_iter([("setup", fn_object(setup))])
+    let util = util::make_api();
+    Dictionary::from_iter([
+        ("setup", fn_object(setup)),
+        ("buffer_editor", fn_object(Editor::of_existing_buffer)),
+        ("util", util.into()),
+    ])
 }
 
 pub fn add(left: u64, right: u64) -> u64 {

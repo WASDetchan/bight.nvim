@@ -1,17 +1,9 @@
 use std::sync::Arc;
 
-use crate::editor::{
-    CELL_WIDTH, Editor, autocmd::start_editing_cell, render_buffer, util::current_cell_pos,
-};
+use crate::editor::{CELL_WIDTH, Editor, render_buffer};
+use crate::util::{current_cell_pos, move_left, move_right};
 
-use super::CELL_UNIT_WIDTH;
-use bight::{
-    csv::slice_to_csv_string,
-    table::{
-        Table,
-        slice::{SlicePos, table::TableSlice},
-    },
-};
+use bight::table::slice::CellRange;
 use nvim_oxi::api::{Buffer, opts::SetKeymapOpts, types::Mode};
 
 pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
@@ -19,32 +11,32 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
         .set_keymap(
             Mode::Normal,
             "l",
-            &format!("{CELL_UNIT_WIDTH}l"),
-            &SetKeymapOpts::builder().noremap(true).build(),
+            "",
+            &SetKeymapOpts::builder().callback(|()| move_right()).build(),
         )
         .unwrap();
     buffer
         .set_keymap(
             Mode::VisualSelect,
             "l",
-            &format!("{CELL_UNIT_WIDTH}l"),
-            &SetKeymapOpts::builder().noremap(true).build(),
+            "",
+            &SetKeymapOpts::builder().callback(|()| move_right()).build(),
         )
         .unwrap();
     buffer
         .set_keymap(
             Mode::Normal,
             "h",
-            &format!("{CELL_UNIT_WIDTH}h"),
-            &SetKeymapOpts::builder().noremap(true).build(),
+            "",
+            &SetKeymapOpts::builder().callback(|()| move_left()).build(),
         )
         .unwrap();
     buffer
         .set_keymap(
             Mode::VisualSelect,
             "l",
-            &format!("{CELL_UNIT_WIDTH}l"),
-            &SetKeymapOpts::builder().noremap(true).build(),
+            "",
+            &SetKeymapOpts::builder().callback(|()| move_left()).build(),
         )
         .unwrap();
     buffer
@@ -63,17 +55,7 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                 "yy",
                 "",
                 &SetKeymapOpts::builder()
-                    .callback(move |()| {
-                        let pos = current_cell_pos();
-                        let mut editor = editor.lock().unwrap();
-                        let source = editor
-                            .table
-                            .get_source(pos)
-                            .unwrap_or(&Arc::from(""))
-                            .clone();
-
-                        editor.clipboard.set(source)
-                    })
+                    .callback(move |()| editor.yank_current_source())
                     .build(),
             )
             .unwrap();
@@ -86,18 +68,7 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                 "Y",
                 "",
                 &SetKeymapOpts::builder()
-                    .callback(move |()| {
-                        let pos = current_cell_pos();
-                        let mut editor = editor.lock().unwrap();
-                        let source = editor
-                            .table
-                            .get(pos)
-                            .map(|v| v.to_string())
-                            .unwrap_or(String::from(""))
-                            .clone();
-
-                        editor.clipboard.set(Arc::from(source))
-                    })
+                    .callback(move |()| editor.yank_current_value())
                     .build(),
             )
             .unwrap();
@@ -110,17 +81,7 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                 "Y",
                 "",
                 &SetKeymapOpts::builder()
-                    .callback(move |()| {
-                        let start = editor.lock().unwrap().visual_start;
-                        let mut end = current_cell_pos();
-                        end.x += 1;
-                        end.y += 1;
-                        let spos = SlicePos::new(start, end);
-                        let mut editor = editor.lock().unwrap();
-                        let source = slice_to_csv_string(TableSlice::new(spos, &editor.table));
-
-                        editor.clipboard.set(Arc::from(source))
-                    })
+                    .callback(move |()| editor.yank_current_value_range_as_csv())
                     .build(),
             )
             .unwrap();
@@ -135,10 +96,8 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                 &SetKeymapOpts::builder()
                     .callback(move |()| {
                         let pos = current_cell_pos();
-                        start_editing_cell(pos, editor.clone());
-                        eprintln!("started editing {pos}");
+                        editor.start_editing_cell(pos);
                     })
-                    // .noremap(true)
                     .build(),
             )
             .unwrap();
@@ -159,7 +118,7 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                             let source = editor.clipboard.get();
                             editor.table.set_source(pos, source);
                         }
-                        render_buffer(editor.clone());
+                        editor.render();
                     })
                     .noremap(true)
                     .build(),
@@ -169,25 +128,22 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
     let cb = {
         let editor = editor.clone();
         move |()| {
-            let c_editor = editor.clone();
-            let mut editor = editor.lock().unwrap();
-
-            let start = editor.visual_start;
+            let start = editor.state().visual_start;
             let mut end = current_cell_pos();
             end.x += 1;
             end.y += 1;
-            let slice = SlicePos::from((start, end));
+            let slice = CellRange::from((start, end));
 
             for row in slice.rows() {
                 for col in slice.columns() {
                     let mut pos = slice.start;
                     pos.x += col;
                     pos.y += row;
-                    editor.table.set_source::<Arc<str>>(pos, None);
+                    editor.state().table.set_source::<Arc<str>>(pos, None);
                 }
             }
-            drop(editor);
-            render_buffer(c_editor);
+            editor.render();
+            render_buffer(&editor);
         }
     };
     buffer
@@ -200,27 +156,22 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
         .unwrap();
     {
         let cb = move |()| {
-            let c_editor = editor.clone();
-            let mut editor = editor.lock().unwrap();
-
-            let start = editor.visual_start;
+            let start = editor.state().visual_start;
             let mut end = current_cell_pos();
             end.x += 1;
             end.y += 1;
-            let slice = SlicePos::from((start, end));
+            let slice = CellRange::from((start, end));
 
-            dbg!(slice);
-            let source = editor.clipboard.get();
+            let source = editor.state().clipboard.get();
             for row in slice.rows() {
                 for col in slice.columns() {
                     let mut pos = slice.start;
                     pos.x += col;
                     pos.y += row;
-                    editor.table.set_source(pos, source.clone());
+                    editor.state().table.set_source(pos, source.clone());
                 }
             }
-            drop(editor);
-            render_buffer(c_editor);
+            editor.render();
         };
         buffer
             .set_keymap(
