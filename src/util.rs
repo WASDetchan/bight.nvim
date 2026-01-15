@@ -4,7 +4,7 @@ pub use api::make as make_api;
 
 use bight::table::cell::CellPos;
 
-use crate::editor::CELL_UNIT_WIDTH;
+use crate::editor::{CELL_UNIT_WIDTH, CELL_WIDTH};
 
 use nvim_oxi::{
     self as nvim,
@@ -35,6 +35,12 @@ pub fn set_cursor(line: usize, col: usize) {
 
 pub fn set_cursor_to_cell_pos(pos: CellPos) {
     let (line, col) = cursor_position(pos);
+
+    set_cursor(line, col);
+}
+pub fn set_cursor_to_cell_pos_visual(pos: CellPos) {
+    let (line, mut col) = cursor_position(pos);
+    col += CELL_WIDTH;
 
     set_cursor(line, col);
 }
@@ -73,6 +79,33 @@ pub fn move_up() {
 pub fn move_down() {
     move_cells(0, 1);
 }
+pub fn move_cells_visual(x: isize, y: isize) {
+    let mut pos = current_cell_pos();
+    pos.x += x;
+    pos.y += y;
+
+    if pos.x.is_negative() {
+        pos.x = 0;
+    }
+    if pos.y.is_negative() {
+        pos.y = 0;
+    }
+
+    set_cursor_to_cell_pos_visual(pos);
+}
+
+pub fn move_left_visual() {
+    move_cells_visual(-1, 0);
+}
+pub fn move_right_visual() {
+    move_cells_visual(1, 0);
+}
+pub fn move_up_visual() {
+    move_cells_visual(0, -1);
+}
+pub fn move_down_visual() {
+    move_cells_visual(0, 1);
+}
 
 pub fn notify_err(msg: &str) {
     nvim::api::echo(
@@ -102,6 +135,7 @@ pub fn get_buffer_as_string(buffer: &Buffer) -> String {
 pub use lua::*;
 
 mod lua {
+    use nvim_oxi::mlua;
     use std::any::type_name;
 
     use nvim_oxi::{

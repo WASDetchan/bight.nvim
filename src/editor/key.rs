@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::editor::{CELL_WIDTH, Editor, render_buffer};
-use crate::util::{current_cell_pos, move_left, move_right};
+use crate::util::{
+    self, current_cell_pos, move_left, move_left_visual, move_right, move_right_visual,
+};
 
 use bight::table::slice::CellRange;
 use nvim_oxi::api::{Buffer, opts::SetKeymapOpts, types::Mode};
@@ -20,7 +22,9 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
             Mode::VisualSelect,
             "l",
             "",
-            &SetKeymapOpts::builder().callback(|()| move_right()).build(),
+            &SetKeymapOpts::builder()
+                .callback(|()| move_right_visual())
+                .build(),
         )
         .unwrap();
     buffer
@@ -34,9 +38,11 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
     buffer
         .set_keymap(
             Mode::VisualSelect,
-            "l",
+            "h",
             "",
-            &SetKeymapOpts::builder().callback(|()| move_left()).build(),
+            &SetKeymapOpts::builder()
+                .callback(|()| move_left_visual())
+                .build(),
         )
         .unwrap();
     buffer
@@ -56,6 +62,23 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
                 "",
                 &SetKeymapOpts::builder()
                     .callback(move |()| editor.yank_current_source())
+                    .build(),
+            )
+            .unwrap();
+    }
+    {
+        let editor = editor.clone();
+        buffer
+            .set_keymap(
+                Mode::Normal,
+                "dd",
+                "",
+                &SetKeymapOpts::builder()
+                    .callback(move |()| {
+                        editor.yank_current_source();
+                        editor.set_source(util::current_cell_pos(), String::from(""));
+                        editor.render();
+                    })
                     .build(),
             )
             .unwrap();

@@ -2,6 +2,7 @@ use bight::table::{CellPos, CellRange};
 use mlua::{IntoLua, Lua, UserData};
 use nvim_oxi as nvim;
 use nvim_oxi::lua::Pushable;
+use nvim_oxi::mlua;
 
 use crate::editor::Editor;
 use crate::util;

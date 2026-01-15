@@ -9,12 +9,13 @@ name = "bight"
 crate-type = ["cdylib"]
 
 [dependencies]
-nvim-oxi = {version = "0.6", git = "https://github.com/noib3/nvim-oxi.git", features = ["neovim-0-11", "test"], default-features = false}
+# nvim-oxi = {version = "0.6", git = "https://github.com/noib3/nvim-oxi.git", features = ["neovim-0-11", "test"]}
+nvim-oxi = {version = "0.6", path = "../nvim-oxi/", features = ["neovim-0-11", "test", "mlua"]}
 # bight = { path = "../bight/bight/" , version = "0.1.1-f" }
 bight = "0.1.1-f"
 hashbrown = "0.15"
 anyhow = "1.0.100"
-mlua = {version = "0.11.5", features = ["luajit"]}
+# mlua = {version = "0.11.5", features = ["luajit"]}
 
 [patch.crates-io]
 mlua = {git = "https://github.com/WASDetchan/mlua/", branch = "pub-push-pop", version = "0.11.5"}

@@ -134,7 +134,6 @@ dependencies = [
  "anyhow",
  "bight",
  "hashbrown 0.15.5",
- "mlua",
  "nvim-oxi",
 ]
 
@@ -869,7 +868,6 @@ dependencies = [
  "futures-util",
  "libc",
  "mlua-sys",
- "mlua_derive",
  "num-traits",
  "parking_lot",
  "rustc-hash",
@@ -884,16 +882,6 @@ dependencies = [
  "cc",
  "cfg-if",
  "pkg-config",
-]
-
-[[package]]
-name = "mlua_derive"
-version = "0.11.0"
-source = "git+https://github.com/WASDetchan/mlua/?branch=pub-push-pop#585112be059471a700e50ee1cf71923e7b02a957"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -947,9 +935,9 @@ dependencies = [
 [[package]]
 name = "nvim-oxi"
 version = "0.6.0"
-source = "git+https://github.com/noib3/nvim-oxi.git#fef0f72702f6928815eeec358d7aa834b7290ded"
 dependencies = [
  "cargo_metadata",
+ "mlua",
  "nvim-oxi-api",
  "nvim-oxi-luajit",
  "nvim-oxi-macros",
@@ -960,7 +948,6 @@ dependencies = [
 [[package]]
 name = "nvim-oxi-api"
 version = "0.6.0"
-source = "git+https://github.com/noib3/nvim-oxi.git#fef0f72702f6928815eeec358d7aa834b7290ded"
 dependencies = [
  "mlua",
  "nvim-oxi-luajit",
@@ -974,7 +961,6 @@ dependencies = [
 [[package]]
 name = "nvim-oxi-luajit"
 version = "0.6.0"
-source = "git+https://github.com/noib3/nvim-oxi.git#fef0f72702f6928815eeec358d7aa834b7290ded"
 dependencies = [
  "thiserror",
 ]
@@ -982,7 +968,6 @@ dependencies = [
 [[package]]
 name = "nvim-oxi-macros"
 version = "0.6.0"
-source = "git+https://github.com/noib3/nvim-oxi.git#fef0f72702f6928815eeec358d7aa834b7290ded"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -992,7 +977,6 @@ dependencies = [
 [[package]]
 name = "nvim-oxi-types"
 version = "0.6.0"
-source = "git+https://github.com/noib3/nvim-oxi.git#fef0f72702f6928815eeec358d7aa834b7290ded"
 dependencies = [
  "libc",
  "nvim-oxi-luajit",
