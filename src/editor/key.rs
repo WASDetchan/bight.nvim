@@ -88,6 +88,24 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
         buffer
             .set_keymap(
                 Mode::Normal,
+                "cc",
+                "",
+                &SetKeymapOpts::builder()
+                    .callback(move |()| {
+                        editor.yank_current_source();
+                        editor.set_source(util::current_cell_pos(), String::from(""));
+                        editor.render();
+                        nvim_oxi::api::command("startinsert").unwrap();
+                    })
+                    .build(),
+            )
+            .unwrap();
+    }
+    {
+        let editor = editor.clone();
+        buffer
+            .set_keymap(
+                Mode::Normal,
                 "Y",
                 "",
                 &SetKeymapOpts::builder()

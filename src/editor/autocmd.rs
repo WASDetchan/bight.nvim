@@ -39,7 +39,7 @@ pub fn attach_editor_autocmd() {
     nvim::api::create_autocmd(
         ["BufReadPost"],
         &CreateAutocmdOpts::builder()
-            .patterns(["*.bight"])
+            .patterns(["*.bight", "*.csv"])
             .callback(|args: AutocmdCallbackArgs| {
                 init_buffer(args.buffer, Some(&args.file));
                 false
@@ -50,7 +50,7 @@ pub fn attach_editor_autocmd() {
     nvim::api::create_autocmd(
         ["BufNewFile"],
         &CreateAutocmdOpts::builder()
-            .patterns(["*.bight"])
+            .patterns(["*.bight", "*.csv"])
             .callback(|args: AutocmdCallbackArgs| {
                 init_buffer(args.buffer, None);
                 false
