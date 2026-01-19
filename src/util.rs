@@ -11,11 +11,31 @@ use nvim_oxi::{
     api::{Buffer, opts::EchoOpts},
 };
 
+pub fn get_cursor() -> (usize, usize) {
+    let (row, _) = nvim::api::get_current_win().get_cursor().unwrap();
+
+    let col = lua::nvim_mlua()
+        .load("vim.fn.virtcol('.')")
+        .eval::<usize>()
+        .unwrap();
+
+    (row, col)
+}
+
+pub fn set_cursor(line: usize, col: usize) {
+    let col = lua::nvim_mlua()
+        .load(format!("vim.fn.virtcol2col(0, {line}, {col})"))
+        .eval::<usize>()
+        .unwrap();
+
+    nvim::api::get_current_win().set_cursor(line, col).unwrap();
+}
+
 pub fn cell_pos((cursorx, cursory): (usize, usize)) -> CellPos {
     (((cursorx) / CELL_UNIT_WIDTH) as isize, cursory as isize - 1).into()
 }
 pub fn current_cell_pos() -> CellPos {
-    let (row, col) = nvim::api::get_current_win().get_cursor().unwrap();
+    let (row, col) = get_cursor();
     cell_pos((col, row))
 }
 
@@ -27,10 +47,6 @@ pub fn cursor_position(pos: CellPos) -> (usize, usize) {
 
 pub fn normalize_cursor_position(line: usize, col: usize) -> (usize, usize) {
     (line, col - col % CELL_UNIT_WIDTH)
-}
-
-pub fn set_cursor(line: usize, col: usize) {
-    nvim::api::get_current_win().set_cursor(line, col).unwrap();
 }
 
 pub fn set_cursor_to_cell_pos(pos: CellPos) {
@@ -46,7 +62,7 @@ pub fn set_cursor_to_cell_pos_visual(pos: CellPos) {
 }
 
 pub fn normalize_cursor() {
-    let (line, col) = nvim::api::get_current_win().get_cursor().unwrap();
+    let (line, col) = get_cursor();
     let (line, col) = normalize_cursor_position(line, col);
 
     set_cursor(line, col);
