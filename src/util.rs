@@ -17,16 +17,21 @@ pub fn get_cursor() -> (usize, usize) {
     let col = lua::nvim_mlua()
         .load("vim.fn.virtcol('.')")
         .eval::<usize>()
-        .unwrap();
+        .unwrap()
+        .saturating_sub(1);
 
     (row, col)
 }
 
 pub fn set_cursor(line: usize, col: usize) {
-    let col = lua::nvim_mlua()
-        .load(format!("vim.fn.virtcol2col(0, {line}, {col})"))
-        .eval::<usize>()
-        .unwrap();
+    let col = if col > 0 {
+        lua::nvim_mlua()
+            .load(format!("vim.fn.virtcol2col(0, {line}, {col})"))
+            .eval::<usize>()
+            .unwrap()
+    } else {
+        0
+    };
 
     nvim::api::get_current_win().set_cursor(line, col).unwrap();
 }

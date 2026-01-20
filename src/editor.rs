@@ -134,6 +134,7 @@ impl Editor {
     pub fn get_visual_start(&self) -> CellPos {
         self.state().visual_start
     }
+
     pub fn render(&self) {
         render_buffer(self);
     }
@@ -154,10 +155,11 @@ impl Editor {
     }
     pub fn get_current_visual_range(&self) -> CellRange {
         let start = self.state().visual_start;
-        let mut end = util::current_cell_pos();
-        end.x += 1;
-        end.y += 1;
-        CellRange::new_limits(start, end)
+        let end = util::current_cell_pos();
+        let mut range = CellRange::new_limits(start, end);
+        range.width += 1;
+        range.height += 1;
+        range
     }
     pub fn get_value_range_as_csv(&self, range: CellRange) -> String {
         slice_to_csv_string(self.state().table.slice(range))

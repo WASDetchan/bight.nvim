@@ -197,16 +197,12 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
         .unwrap();
     {
         let cb = move |()| {
-            let start = editor.state().visual_start;
-            let mut end = current_cell_pos();
-            end.x += 1;
-            end.y += 1;
-            let slice = CellRange::from((start, end));
+            let range = editor.get_current_visual_range();
 
             let source = editor.state().clipboard.get();
-            for row in slice.rows() {
-                for col in slice.columns() {
-                    let mut pos = slice.start;
+            for row in range.rows() {
+                for col in range.columns() {
+                    let mut pos = range.start;
                     pos.x += col;
                     pos.y += row;
                     editor.state().table.set_source(pos, source.clone());
