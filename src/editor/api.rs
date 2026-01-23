@@ -50,6 +50,15 @@ impl UserData for Editor {
             this.plot_segments(range, std::path::Path::new(&path))
                 .map_err(|e| mlua::Error::ExternalError(Arc::from(e.into_boxed_dyn_error())))
         });
+
+        methods.add_method(
+            "plot_linear",
+            |_, this, (path, range): (String, CellRange)| {
+                this.plot_linear(range, std::path::Path::new(&path))
+                    .map(|vec| vec.into_iter().map(|(a, b)| [a, b]).collect::<Vec<_>>())
+                    .map_err(|e| mlua::Error::ExternalError(Arc::from(e.into_boxed_dyn_error())))
+            },
+        );
     }
 }
 
