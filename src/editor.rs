@@ -206,6 +206,13 @@ impl Editor {
         buffer
     }
 
+    pub fn plot_segments(&self, range: CellRange, path: &Path) -> Result<(), anyhow::Error> {
+        Ok(bight::plot::plot_segments_to_file(
+            self.state().table.slice(range),
+            path,
+        )?)
+    }
+
     pub fn attach_cell_to_buffer(&self, pos: CellPos, mut buffer: Buffer) {
         let source = self
             .state()

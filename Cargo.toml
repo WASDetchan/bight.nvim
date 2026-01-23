@@ -1,6 +1,6 @@
 [package]
 name = "bight_nvim"
-version = "0.1.3-e"
+version = "0.1.3-f"
 edition = "2024"
 resolver = "2"
 
@@ -12,10 +12,10 @@ crate-type = ["cdylib"]
 # nvim-oxi = {version = "0.6", git = "https://github.com/noib3/nvim-oxi.git", features = ["neovim-0-11", "test"]}
 nvim-oxi = {version = "0.6", git = "https://github.com/WASDetchan/nvim-oxi.git", branch = "no_mlua_module_dependency", features = ["neovim-0-11", "test", "mlua"]}
 # nvim-oxi = {version = "0.6", path = "../nvim-oxi/", features = ["neovim-0-11", "test", "mlua"]}
-bight = { path = "../bight/bight/" , version = "0.1.1-f" }
+bight = { path = "../bight/bight/" , version = "0.1.2-b" }
 # bight = "0.1.1-f"
 hashbrown = "0.15"
-anyhow = "1.0.100"
+anyhow = { version = "1.0.100", features = ["std"] }
 # mlua = {version = "0.11.5", features = ["luajit"]}
 
 [patch.crates-io]

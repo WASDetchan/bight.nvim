@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bight::table::{CellPos, CellRange};
 use mlua::{IntoLua, Lua, UserData};
 use nvim_oxi as nvim;
@@ -35,11 +37,19 @@ impl UserData for Editor {
             this.set_visual_start(pos);
             Ok(())
         });
-        // IntoLua for CellPos is not yet implemented
-        // methods.add_method(
-        //     "get_visual_start",
-        //     |_, this, ()| Ok(this.get_visual_start()),
-        // );
+        methods.add_method(
+            "get_visual_start",
+            |_, this, ()| Ok(this.get_visual_start()),
+        );
+        methods.add_method("plot_visual", |_, this, path: String| {
+            let range = this.get_current_visual_range();
+            this.plot_segments(range, std::path::Path::new(&path))
+                .map_err(|e| mlua::Error::ExternalError(Arc::from(e.into_boxed_dyn_error())))
+        });
+        methods.add_method("plot", |_, this, (path, range): (String, CellRange)| {
+            this.plot_segments(range, std::path::Path::new(&path))
+                .map_err(|e| mlua::Error::ExternalError(Arc::from(e.into_boxed_dyn_error())))
+        });
     }
 }
 
