@@ -212,6 +212,12 @@ impl Editor {
             path,
         )?)
     }
+    pub fn plot_auto(&self, range: CellRange, path: &Path) -> Result<(), anyhow::Error> {
+        Ok(bight::plot::plot_auto_to_file(
+            self.state().table.slice(range),
+            path,
+        )?)
+    }
     pub fn plot_linear(
         &self,
         range: CellRange,

@@ -137,6 +137,29 @@ pub fn notify_err(msg: &str) {
     .unwrap();
 }
 
+pub fn notify(msg: &str) {
+    nvim::api::echo(
+        [(msg, Option::<char>::None)],
+        true,
+        &EchoOpts::builder().err(false).build(),
+    )
+    .unwrap();
+}
+
+#[macro_export]
+macro_rules! notify {
+    ($args:tt) => {
+        $crate::util::notify(&format!($args))
+    };
+}
+
+#[macro_export]
+macro_rules! enotify {
+    ($args:tt) => {
+        $crate::util::notify_err(&format!($args))
+    };
+}
+
 pub fn get_buffer_line(buffer: &Buffer, line: usize) -> String {
     buffer
         .get_lines(line..=line, false)

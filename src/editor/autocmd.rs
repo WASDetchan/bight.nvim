@@ -1,17 +1,21 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, str::FromStr, sync::Arc};
 
-use bight::{file::BightFile, table::cell::CellPos};
+use bight::{
+    file::BightFile,
+    table::{CellRange, cell::CellPos},
+};
 use nvim_oxi::{
     self as nvim,
     api::{
         Buffer,
-        opts::{CreateAutocmdOpts, OptionOpts},
-        types::AutocmdCallbackArgs,
+        opts::{CreateAutocmdOpts, CreateCommandOpts, OptionOpts},
+        types::{AutocmdCallbackArgs, CommandArgs},
     },
 };
 
 use crate::{
     editor::{Editor, add_keymaps, render_buffer, render_buffer_edit},
+    enotify, notify,
     util::{current_cell_pos, get_buffer_as_string, normalize_cursor, notify_err},
 };
 
@@ -60,7 +64,7 @@ pub fn attach_editor_autocmd() {
     .unwrap();
 }
 
-fn attach_buffer_autocmd(buffer: Buffer, editor: Editor) {
+fn attach_buffer_autocmd(mut buffer: Buffer, editor: Editor) {
     nvim::api::set_option_value(
         "buftype",
         "acwrite",
@@ -125,6 +129,64 @@ fn attach_buffer_autocmd(buffer: Buffer, editor: Editor) {
                 .build(),
         )
         .unwrap();
+    }
+
+    {
+        let editor = editor.clone();
+        buffer
+            .create_user_command(
+                "BightPlot",
+                move |args: CommandArgs| {
+                    let Some((req, other)) = args.fargs.split_at_checked(2) else {
+                        enotify!("Not enought argumets to plot! Required: path, range");
+                        return;
+                    };
+                    let mode = other.first().map_or("auto", |v| v).to_lowercase();
+                    let (path, range): (&str, &str) = (&req[0], &req[1]);
+
+                    let range = match CellRange::from_str(range) {
+                        Ok(r) => r,
+                        Err(_) => {
+                            enotify!("Invalid range {range} was passed!");
+                            return;
+                        }
+                    };
+                    match mode.as_str() {
+                        "auto" => match editor.plot_auto(range, Path::new(&path)) {
+                            Ok(()) => (),
+                            Err(e) => {
+                                enotify!("Failed to plot data: {e}");
+                            }
+                        },
+
+                        "lin" | "line" | "linear" => {
+                            let coefs = match editor.plot_linear(range, Path::new(&path)) {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    enotify!("Failed to plot data: {e}");
+                                    return;
+                                }
+                            };
+                            notify!("Plotted linear data, coeeficients: {coefs:?}");
+                        }
+                        "seg" | "segment" => match editor.plot_segments(range, Path::new(&path)) {
+                            Ok(()) => (),
+                            Err(e) => {
+                                enotify!("Failed to plot data: {e}");
+                            }
+                        },
+                        _ => {
+                            enotify!(
+                                "Invalid plotting mode {mode}! Accepted: auto, linear, segment."
+                            );
+                        }
+                    }
+                },
+                &CreateCommandOpts::builder()
+                    .nargs(nvim_oxi::api::types::CommandNArgs::OneOrMore)
+                    .build(),
+            )
+            .unwrap();
     }
 
     let cb_to_v = {

@@ -142,7 +142,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bight"
-version = "0.1.2-b"
+version = "0.1.2-c"
 dependencies = [
  "arboard",
  "bon",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "bight_nvim"
-version = "0.1.3-f"
+version = "0.1.3-g"
 dependencies = [
  "anyhow",
  "bight",
