@@ -15,7 +15,7 @@ use nvim_oxi::{
 
 use crate::{
     editor::{Editor, add_keymaps, render_buffer, render_buffer_edit},
-    enotify, notify,
+    enotify,
     util::{current_cell_pos, get_buffer_as_string, normalize_cursor, notify_err},
 };
 
@@ -160,14 +160,13 @@ fn attach_buffer_autocmd(mut buffer: Buffer, editor: Editor) {
                         },
 
                         "lin" | "line" | "linear" => {
-                            let coefs = match editor.plot_linear(range, Path::new(&path)) {
+                            match editor.plot_linear(range, Path::new(&path)) {
                                 Ok(c) => c,
                                 Err(e) => {
                                     enotify!("Failed to plot data: {e}");
-                                    return;
                                 }
                             };
-                            notify!("Plotted linear data, coeeficients: {coefs:?}");
+                            // notify!("Plotted linear data, coeeficients: {coefs:?}");
                         }
                         "seg" | "segment" => match editor.plot_segments(range, Path::new(&path)) {
                             Ok(()) => (),

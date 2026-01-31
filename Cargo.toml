@@ -17,6 +17,3 @@ bight = { path = "../bight/bight/" , version = "0.1.2-c" }
 hashbrown = "0.15"
 anyhow = { version = "1.0.100", features = ["std"] }
 # mlua = {version = "0.11.5", features = ["luajit"]}
-
-[patch.crates-io]
-mlua = {git = "https://github.com/WASDetchan/mlua/", branch = "pub-push-pop", version = "0.11.5"}
