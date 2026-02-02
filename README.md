@@ -29,10 +29,10 @@ nvim file.bight
 ```
 Use hjkl to move. Use I to edit cell in a separate buffer, or edit in-place with i or R. If you want to evaluate a formula start the cell's source with '=' with a lua expression following it ('=' as the first symbol of the cell will be changed to be 'return ' and the lua chunk will be evaluated. Use '\=' if you want the literal '='). Yank cell's source with yy or cell's evaluation result with Y. Paste into the cell with p. Enter visual mode with v. In visual mode use p to paste from clipboard to each of the selected cells, Y to yank values of the selected cells as comma-separated values.  
 In formulas other cells may be referenced in excel-like manner. The cell positions start from A0. The column's index is the cell's letter coordinate with letters like digits of base 26 number system (so A is 0, B is 1, ..., Z is 25, BZ is 26).  
-Available global lua functions:
-- POSX(): x coordinate (column index) of the current cell 
-- POSY(): y coordinate (row index) of the current cell
+Available global lua functions and values:
+- POS, THISPOS(): CellPos of the current cell 
 - REL(dx, dy): value of the cell dx to the right and dy down
+- Math formulas such as COS(x), LN(x), etc.
 - More formulas and and slice support are coming soon
 
 
