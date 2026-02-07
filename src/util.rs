@@ -148,15 +148,15 @@ pub fn notify(msg: &str) {
 
 #[macro_export]
 macro_rules! notify {
-    ($args:tt) => {
-        $crate::util::notify(&format!($args))
+    ($( $args:tt )*) => {
+        $crate::util::notify(&format!($( $args )*))
     };
 }
 
 #[macro_export]
 macro_rules! enotify {
-    ($args:tt) => {
-        $crate::util::notify_err(&format!($args))
+    ($( $args:tt )*) => {
+        $crate::util::notify_err(&format!($($args)*))
     };
 }
 
