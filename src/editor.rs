@@ -26,9 +26,13 @@ use nvim_oxi::{
     },
 };
 
-use crate::util::{self, cursor_position, get_buffer_line};
+use crate::{
+    editor::clipboard::NvimClipboard,
+    util::{self, cursor_position, get_buffer_line},
+};
 
 pub struct EditorState {
+    expand: Option<CellPos>,
     edit: Option<CellPos>,
     visual_start: CellPos,
     buffer: Buffer,
@@ -41,9 +45,10 @@ impl EditorState {
         Self {
             buffer,
             edit: None,
+            expand: None,
             visual_start: CellPos::default(),
             table: EvaluatorTable::new(SourceTable::new()),
-            clipboard: Clipboard::new(),
+            clipboard: Clipboard::with_provider(NvimClipboard),
         }
     }
     pub fn with_file_buffer(buffer: Buffer, file: &Path) -> anyhow::Result<Self> {
@@ -51,9 +56,10 @@ impl EditorState {
         Ok(Self {
             buffer,
             edit: None,
+            expand: None,
             visual_start: CellPos::default(),
             table: EvaluatorTable::new(source),
-            clipboard: Clipboard::new(),
+            clipboard: Clipboard::with_provider(NvimClipboard),
         })
     }
 }
