@@ -11,6 +11,8 @@ use nvim_oxi::{
     api::{Buffer, opts::EchoOpts},
 };
 
+/// Gets the cursor position in the current window in printable characters (accounting for
+/// multibyte and multisymbol chars in the text)
 pub fn get_cursor() -> (usize, usize) {
     let (row, _) = nvim::api::get_current_win().get_cursor().unwrap();
 
@@ -23,6 +25,8 @@ pub fn get_cursor() -> (usize, usize) {
     (row, col)
 }
 
+/// Sets the cursor position in the current window in printable characters (accounting for
+/// multibyte and multisymbol chars in the text)
 pub fn set_cursor(line: usize, col: usize) {
     let col = if col > 0 {
         lua::nvim_mlua()
@@ -36,9 +40,12 @@ pub fn set_cursor(line: usize, col: usize) {
     nvim::api::get_current_win().set_cursor(line, col).unwrap();
 }
 
+/// Converts the cursor position into a position in a table
 pub fn cell_pos((cursorx, cursory): (usize, usize)) -> CellPos {
     (((cursorx) / CELL_UNIT_WIDTH) as isize, cursory as isize - 1).into()
 }
+
+/// Gets the current position in the table
 pub fn current_cell_pos() -> CellPos {
     let (row, col) = get_cursor();
     cell_pos((col, row))
