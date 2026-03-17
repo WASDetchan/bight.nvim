@@ -32,6 +32,7 @@ use crate::{
 };
 
 pub struct EditorState {
+    #[expect(dead_code, reason = "This will be read later, but is written to now")]
     expand: Option<CellPos>,
     edit: Option<CellPos>,
     visual_start: CellPos,
