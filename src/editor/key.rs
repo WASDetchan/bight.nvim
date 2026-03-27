@@ -148,6 +148,23 @@ pub fn add_keymaps(buffer: &mut Buffer, editor: Editor) {
         buffer
             .set_keymap(
                 Mode::Normal,
+                "K",
+                "",
+                &SetKeymapOpts::builder()
+                    .callback(move |()| {
+                        let pos = current_cell_pos();
+                        editor.switch_expand(pos);
+                        editor.render();
+                    })
+                    .build(),
+            )
+            .unwrap();
+    }
+    {
+        let editor = editor.clone();
+        buffer
+            .set_keymap(
+                Mode::Normal,
                 "p",
                 "",
                 &SetKeymapOpts::builder()

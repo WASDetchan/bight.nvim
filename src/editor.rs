@@ -2,6 +2,7 @@ mod api;
 mod autocmd;
 mod clipboard;
 mod key;
+mod style;
 pub use autocmd::attach_editor_autocmd;
 use hashbrown::HashMap;
 pub use key::add_keymaps;
@@ -27,7 +28,10 @@ use nvim_oxi::{
 };
 
 use crate::{
-    editor::clipboard::NvimClipboard,
+    editor::{
+        clipboard::NvimClipboard,
+        style::{CellStyle, TableStyle},
+    },
     util::{self, cursor_position, get_buffer_line},
 };
 
@@ -38,6 +42,7 @@ pub struct EditorState {
     visual_start: CellPos,
     buffer: Buffer,
     table: EvaluatorTable,
+    style: TableStyle<'static>,
     clipboard: Clipboard,
 }
 
@@ -49,6 +54,7 @@ impl EditorState {
             expand: None,
             visual_start: CellPos::default(),
             table: EvaluatorTable::new(SourceTable::new()),
+            style: TableStyle::new(CellStyle::default()),
             clipboard: Clipboard::with_provider(NvimClipboard),
         }
     }
@@ -60,6 +66,7 @@ impl EditorState {
             expand: None,
             visual_start: CellPos::default(),
             table: EvaluatorTable::new(source),
+            style: TableStyle::new(CellStyle::default()),
             clipboard: Clipboard::with_provider(NvimClipboard),
         })
     }
@@ -223,6 +230,10 @@ impl Editor {
         Ok(bight::plot::plot_linear_to_file(self.state().table.slice(range), path)?.join("\n"))
     }
 
+    pub fn switch_expand(&self, pos: CellPos) {
+        self.state().style.switch_expand(pos);
+    }
+
     pub fn attach_cell_to_buffer(&self, pos: CellPos, mut buffer: Buffer) {
         let source = self
             .state()
@@ -268,15 +279,23 @@ fn prepare_cell_buffer(pos: CellPos, buffer: &mut Buffer) {
     .unwrap();
 }
 
-fn format_row(row: RowSlice<'_, EvaluatorTable>) -> impl Iterator<Item = char> {
-    row.into_iter().flat_map(|v| {
-        v.unwrap_or(&TableValue::Empty)
-            .format_to_length(CELL_WIDTH)
-            .chars()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .chain(CELL_SEPARATOR.chars())
-    })
+fn format_row(row: RowSlice<'_, EvaluatorTable>, style: &TableStyle) -> Vec<String> {
+    let slice = row.into_inner();
+    let mut pos = slice.start();
+    slice
+        .into_iter()
+        .map(move |cell| {
+            let style = style.get_style(pos);
+            pos.x += 1;
+            style.render(cell.unwrap_or(&TableValue::Empty))
+        })
+        .fold(
+            vec![String::new(); style.get_style(pos).height],
+            |mut result, item| {
+                result.iter_mut().zip(item).for_each(|(a, b)| *a += &b);
+                result
+            },
+        )
 }
 pub fn render_buffer_edit(editor: &Editor, pos: CellPos, replace_input: bool) {
     let display_width = nvim::api::get_current_win().get_width().unwrap() as usize;
@@ -309,17 +328,19 @@ pub fn render_buffer_edit(editor: &Editor, pos: CellPos, replace_input: bool) {
     let lines: Vec<_> = slice
         .rows()
         .map(|row| {
-            let line = format_row(row);
+            let line = format_row(row, &editor.style).into_iter().next().unwrap();
             if row.into_inner().start().y != replace_y as isize {
-                line.take(display_width).collect::<String>()
+                line
             } else if replace_input {
-                line.take(replace_start_x)
+                line.chars()
+                    .take(replace_start_x)
                     .chain(source.chars())
                     .chain(" ".chars().cycle())
                     .take(replace_end_x + 1)
                     .collect()
             } else {
-                line.take(replace_start_x)
+                line.chars()
+                    .take(replace_start_x)
                     .chain(line_to_edit.chars().skip(replace_start_x))
                     .chain(" ".chars().cycle())
                     .take(replace_end_x + 1)
@@ -372,7 +393,7 @@ fn render_buffer(editor: &Editor) {
 
     let lines: Vec<_> = slice
         .rows()
-        .map(|row| format_row(row).collect::<String>())
+        .flat_map(|row| format_row(row, &editor.style).into_iter())
         .collect();
 
     let mut buffer = editor.buffer.clone();
